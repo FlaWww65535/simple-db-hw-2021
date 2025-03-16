@@ -7,6 +7,7 @@ import simpledb.common.Permissions;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
+import javax.xml.crypto.Data;
 import java.io.*;
 import java.util.*;
 
@@ -21,6 +22,8 @@ import java.util.*;
  * @author Sam Madden
  */
 public class HeapFile implements DbFile {
+    final private File f;
+    final private TupleDesc td;
 
     /**
      * Constructs a heap file backed by the specified file.
@@ -31,6 +34,8 @@ public class HeapFile implements DbFile {
      */
     public HeapFile(File f, TupleDesc td) {
         // some code goes here
+        this.f = f;
+        this.td = td;
     }
 
     /**
@@ -40,7 +45,7 @@ public class HeapFile implements DbFile {
      */
     public File getFile() {
         // some code goes here
-        return null;
+        return f;
     }
 
     /**
@@ -54,7 +59,7 @@ public class HeapFile implements DbFile {
      */
     public int getId() {
         // some code goes here
-        throw new UnsupportedOperationException("implement this");
+        return f.getAbsoluteFile().hashCode();
     }
 
     /**
@@ -64,12 +69,46 @@ public class HeapFile implements DbFile {
      */
     public TupleDesc getTupleDesc() {
         // some code goes here
-        throw new UnsupportedOperationException("implement this");
+        return td;
     }
 
     // see DbFile.java for javadocs
     public Page readPage(PageId pid) {
         // some code goes here
+        int tableId = pid.getTableId();
+        int pgno = pid.getPageNumber();
+        RandomAccessFile raf = null;
+        try{
+             raf = new RandomAccessFile(f,"r");
+             int begin = pgno * BufferPool.getPageSize();
+             int end = (pgno+1) * BufferPool.getPageSize();
+             if(end>raf.length()){
+                 raf.close();
+                 throw new IllegalArgumentException(String.format("Table %d Page %d is not found in File %s",tableId, pgno,f.getAbsolutePath()));
+             }
+             raf.seek(begin);
+             byte[] data = new byte[BufferPool.getPageSize()];
+             try{
+                 raf.readFully(data);
+             }catch(EOFException e){
+                 raf.close();
+                 throw new IllegalArgumentException(String.format("Table %d Page %d is out of range in File %s",tableId, pgno,f.getAbsolutePath()));
+             }catch(IOException e){
+                 raf.close();
+                 throw new IllegalArgumentException(String.format("Table %d Page %d is not found in File %s",tableId, pgno,f.getAbsolutePath()));
+             }
+             HeapPageId newPid = new HeapPageId(tableId, pgno);
+             return new HeapPage(newPid,data);
+
+        }catch(IOException e){
+            e.printStackTrace();
+        }finally {
+            try{
+                raf.close();
+            }catch(IOException e){
+                e.printStackTrace();
+            }
+        }
         return null;
     }
 
@@ -84,7 +123,9 @@ public class HeapFile implements DbFile {
      */
     public int numPages() {
         // some code goes here
-        return 0;
+        int pageSize = BufferPool.getPageSize();
+
+        return (int)Math.floor((double)f.length()/pageSize);
     }
 
     // see DbFile.java for javadocs
@@ -102,11 +143,76 @@ public class HeapFile implements DbFile {
         return null;
         // not necessary for lab1
     }
+    public class HeapFileIterator implements DbFileIterator{
+        private final HeapFile f;
+        private final TransactionId tid;
+        private Iterator<Tuple> it;
+        private int nowPage;
+        public HeapFileIterator(HeapFile f,TransactionId tid) {
+            this.f = f;
+            this.tid = tid;
+        }
 
+        @Override
+        public void open() throws DbException, TransactionAbortedException {
+            nowPage = 0;
+            it = tupleIterator(nowPage);
+        }
+
+        private Iterator<Tuple> tupleIterator(int pageIndex) throws DbException, TransactionAbortedException {
+            if(pageIndex>=0||pageIndex<f.numPages()){
+                HeapPageId pid = new HeapPageId(f.getId(), pageIndex);
+                HeapPage p = (HeapPage)Database.getBufferPool().getPage(tid,pid,Permissions.READ_ONLY);
+                return p.iterator();
+            }else{
+                throw new DbException(String.format("File %s have not page %d",f.getFile().getAbsolutePath(),pageIndex));
+            }
+
+        }
+
+        @Override
+        public boolean hasNext() throws DbException, TransactionAbortedException {
+            if(it == null){
+                return false;
+            }
+            if(it.hasNext()){
+                return true;
+            }else{
+                if(nowPage < f.numPages()-1){
+                    nowPage++;
+                    it = tupleIterator(nowPage);
+                    return it.hasNext();
+                }else{
+                    return false;
+                }
+            }
+        }
+
+        @Override
+        public Tuple next() throws DbException, TransactionAbortedException {
+            if(it.hasNext()){
+                return it.next();
+            }else{
+                throw new NoSuchElementException();
+            }
+        }
+
+        @Override
+        public void close(){
+            it = null;
+        }
+
+        @Override
+        public void rewind() throws DbException, TransactionAbortedException {
+            close();
+            open();
+        }
+
+    }
     // see DbFile.java for javadocs
     public DbFileIterator iterator(TransactionId tid) {
         // some code goes here
-        return null;
+        return new HeapFileIterator(this,tid);
     }
 
 }

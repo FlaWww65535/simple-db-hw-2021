@@ -7,6 +7,7 @@ import simpledb.common.DeadlockException;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
+import javax.xml.crypto.Data;
 import java.io.*;
 
 import java.util.concurrent.ConcurrentHashMap;
@@ -82,7 +83,10 @@ public class BufferPool {
         if(pages.containsKey(pid)){
             return pages.get(pid);
         }
-        throw new DbException("Page not found: " + pid);
+        DbFile f = Database.getCatalog().getDatabaseFile(pid.getTableId());
+        Page p = f.readPage(pid);
+        pages.put(pid, p);
+        return p;
     }
 
     /**
