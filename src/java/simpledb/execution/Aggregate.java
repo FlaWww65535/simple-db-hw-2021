@@ -56,7 +56,6 @@ public class Aggregate extends Operator {
         }else{
             aggregator = new StringAggregator(gfield,gfieldType,afield,op);
         }
-        it = aggregator.iterator();
     }
 
     /**
