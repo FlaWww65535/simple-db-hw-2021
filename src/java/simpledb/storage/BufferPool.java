@@ -7,6 +7,7 @@ import simpledb.common.DeadlockException;
 import simpledb.transaction.TransactionAbortedException;
 import simpledb.transaction.TransactionId;
 
+import javax.lang.model.type.IntersectionType;
 import javax.xml.crypto.Data;
 import java.io.*;
 
@@ -35,8 +36,7 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
-    int numPages;
-    ConcurrentHashMap<PageId,Page> pages;
+    private Buffer buffer;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -45,8 +45,7 @@ public class BufferPool {
      */
     public BufferPool(int numPages) {
         // some code goes here
-        this.numPages = numPages;
-        pages = new ConcurrentHashMap<>(numPages);
+        this.buffer = new LRUBuffer(numPages);
     }
     
     public static int getPageSize() {
@@ -81,13 +80,7 @@ public class BufferPool {
     public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
         // some code goes here
-        if(pages.containsKey(pid)){
-            return pages.get(pid);
-        }
-        DbFile f = Database.getCatalog().getDatabaseFile(pid.getTableId());
-        Page p = f.readPage(pid);
-        pages.put(pid, p);
-        return p;
+        return buffer.getPage(pid);
     }
 
     /**
@@ -152,11 +145,7 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
-        DbFile f = Database.getCatalog().getDatabaseFile(tableId);
-        List<Page> l = f.insertTuple(tid, t);
-        for(Page p:l){
-            pages.put(p.getId(),p);
-        }
+        buffer.insertTuple(tid,tableId, t);
     }
 
     /**
@@ -176,11 +165,7 @@ public class BufferPool {
         throws DbException, IOException, TransactionAbortedException {
         // some code goes here
         // not necessary for lab1
-        DbFile f = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId());
-        List<Page> l = f.deleteTuple(tid, t);
-        for(Page p:l){
-            pages.put(p.getId(),p);
-        }
+        buffer.deleteTuple(tid,t);
     }
 
     /**
@@ -214,6 +199,7 @@ public class BufferPool {
     private synchronized  void flushPage(PageId pid) throws IOException {
         // some code goes here
         // not necessary for lab1
+        buffer.flushPage(pid);
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -230,6 +216,7 @@ public class BufferPool {
     private synchronized  void evictPage() throws DbException {
         // some code goes here
         // not necessary for lab1
+        buffer.evictPage();
     }
 
 }

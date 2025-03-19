@@ -164,9 +164,7 @@ public class HeapFile implements DbFile {
                 p.insertTuple(t);
                 p.markDirty(true,tid);
                 return List.of(new Page[]{p});
-            }catch(DbException e){
-                e.printStackTrace();
-            }
+            }catch(DbException e){ }
         }
         HeapPage p = new HeapPage(new HeapPageId(this.getId(), numPages()),new byte[BufferPool.getPageSize()]);
         p.insertTuple(t);
